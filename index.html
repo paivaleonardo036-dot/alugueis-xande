@@ -113,6 +113,11 @@ svg{flex:none}
 /* grupos e cartões */
 .list{display:flex;flex-direction:column;gap:22px}
 .group{display:flex;flex-direction:column;gap:10px}
+.inqitem{display:flex;flex-direction:column;gap:6px}
+.inqitem textarea.nota{width:100%;min-height:52px;resize:none;overflow:hidden;background:var(--card);color:var(--fg);border:2px solid var(--line);border-radius:14px;padding:10px 12px;font:inherit;font-weight:600;font-size:1rem;line-height:1.35}
+.inqitem textarea.nota:focus{outline:none;border-color:var(--cold)}
+.inqitem textarea.nota::placeholder{color:var(--muted);font-weight:600}
+.inqitem .notast{font-size:.8rem;font-weight:700;color:var(--muted);text-align:right;min-height:1em;margin-top:-2px}
 .ghead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding-inline:2px}
 .ghead h2{margin:0;font-family:var(--display);font-weight:800;font-size:1.2rem;display:flex;align-items:center;gap:8px}
 .ghead h2 .dot{width:14px;height:14px;border-radius:50%}
@@ -511,12 +516,26 @@ function renderHeader(){
   $("sortSel").value=state.sort;
 }
 
+function fitNota(ta){ta.style.height="auto";ta.style.height=(ta.scrollHeight+4)+"px"}
+const notaTimers={};
+async function saveNota(id,val){clearTimeout(notaTimers[id]);delete notaTimers[id];
+  const t=findT(id);if(!t||!state.db)return;
+  const v=String(val||"").trim();if(v===String(t.nota||"").trim())return;
+  const st=()=>[...document.querySelectorAll("[data-notast]")].find(x=>x.dataset.notast===id);
+  try{await state.db.collection("inquilinos").doc(id).update({nota:v});const e=st();if(e)e.textContent="Salvo ✓"}
+  catch(x){const e=st();if(e)e.textContent="Não salvou — confira a internet";}
+}
 function render(){
   renderHeader();
   const L=$("list");
   if(!state.ready){L.innerHTML=`<div class="empty">Carregando…</div>`;return}
   if(!state.tenants.length){L.innerHTML=`<div class="empty">Nenhum aluguel cadastrado ainda.<br>Toque em <b>Dados e conta</b>, lá embaixo, para importar o backup.</div>`;return}
-  if(state.view==="inq") L.innerHTML=viewInq();
+  const fa=document.activeElement;let keep=null;
+  if(fa&&fa.matches&&fa.matches("textarea.nota")) keep={id:fa.dataset.nota,v:fa.value,a:fa.selectionStart,b:fa.selectionEnd};
+  if(state.view==="inq"){L.innerHTML=viewInq();
+    L.querySelectorAll("textarea.nota").forEach(fitNota);
+    if(keep){const ta=[...L.querySelectorAll("textarea.nota")].find(x=>x.dataset.nota===keep.id);
+      if(ta){ta.value=keep.v;fitNota(ta);ta.focus({preventScroll:true});try{ta.setSelectionRange(keep.a,keep.b)}catch(x){}}}}
   else if(state.view==="end") L.innerHTML=viewEnd();
   else if(state.view==="idx") L.innerHTML=viewIdx();
   else if(state.view==="plan") L.innerHTML=viewPlan();
@@ -551,7 +570,7 @@ function viewInq(){
   if(q) list=list.filter(t=>String(t.nome).toLowerCase().includes(q)||String(t.unidade).toLowerCase().includes(q)||String(t.predio).toLowerCase().includes(q));
   list.sort(sorter());
   if(!list.length) return h+`<div class="empty">${q?"Nenhum inquilino com esse nome.":state.inqTab==="ok"?"Nenhum inquilino em dia.":"Ninguém atrasado. Tudo em dia!"}</div>`;
-  return h+`<section class="group">${list.map(t=>tenantCard(t,{showDebt:true})).join("")}</section>`;
+  return h+`<section class="group">${list.map(t=>`<div class="inqitem">${tenantCard(t,{showDebt:true})}<textarea class="nota" data-nota="${esc(t.id)}" rows="2" placeholder="Observação (escreva o que quiser, salva sozinho)">${esc(t.nota||"")}</textarea><div class="notast" data-notast="${esc(t.id)}"></div></div>`).join("")}</section>`;
 }
 
 function viewEnd(){
@@ -1083,6 +1102,10 @@ L.addEventListener("click",e=>{
   const c=e.target.closest(".card"); if(c){openTenant(c.dataset.id);return}
   const cl=e.target.closest("td.cl"); if(cl) openTenant(cl.dataset.id,state.pYear||state.y);
 });
+L.addEventListener("input",e=>{const ta=e.target.closest&&e.target.closest("textarea.nota");
+  if(ta){fitNota(ta);const id=ta.dataset.nota;const s=[...L.querySelectorAll("[data-notast]")].find(x=>x.dataset.notast===id);if(s)s.textContent="Salvando…";
+    clearTimeout(notaTimers[id]);notaTimers[id]=setTimeout(()=>saveNota(id,ta.value),900);return}});
+L.addEventListener("focusout",e=>{const ta=e.target.closest&&e.target.closest("textarea.nota");if(ta)saveNota(ta.dataset.nota,ta.value)});
 L.addEventListener("input",e=>{if(e.target.id==="qInput"){state.q=e.target.value;const pos=e.target.selectionStart;render();const i=$("qInput");if(i){i.focus();try{i.setSelectionRange(pos,pos)}catch(x){}}}});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"){closeSheet();if(chat.open){chat.open=false;renderChat()}}});
 /* virada do dia / mês com o app aberto */
